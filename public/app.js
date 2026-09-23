@@ -221,4 +221,31 @@ function initTouchInput() {
 
 initTouchInput();
 
+function initDrawer() {
+  const toggle = document.getElementById('drawer-toggle');
+  const drawer = document.getElementById('drawer');
+  toggle.addEventListener('click', () => { drawer.hidden = !drawer.hidden; });
+
+  const keyboardInput = document.getElementById('keyboard-input');
+  keyboardInput.addEventListener('input', () => {
+    const text = keyboardInput.value;
+    if (text.length > 0) {
+      REMOTE.send({ type: 'input', event: { type: 'type', text } });
+      keyboardInput.value = '';
+    }
+  });
+
+  document.querySelectorAll('#drawer button[data-key]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      REMOTE.send({ type: 'input', event: { type: 'key', name: btn.dataset.key } });
+    });
+  });
+
+  document.getElementById('lock-btn').addEventListener('click', () => {
+    REMOTE.send({ type: 'input', event: { type: 'lock' } });
+  });
+}
+
+initDrawer();
+
 
