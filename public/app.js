@@ -91,13 +91,89 @@ function showRemoteScreen() {
   document.getElementById('remote-screen').hidden = false;
 }
 
+const REMOTE = (() => {
+  let ws = null;
+  let pc = null;
+
+  function connect(token) {
+    return new Promise((resolve, reject) => {
+      ws = new WebSocket(`wss://${location.host}/`);
+
+      ws.addEventListener('open', () => {
+        ws.send(JSON.stringify({ type: 'auth', token }));
+      });
+
+      ws.addEventListener('message', async (event) => {
+        const msg = JSON.parse(event.data);
+
+        if (msg.type === 'auth-error' || msg.type === 'kicked') {
+          reject(new Error(msg.type));
+          return;
+        }
+
+        if (msg.type === 'auth-ok') {
+          pc = new RTCPeerConnection({ iceServers: [] });
+          pc.ontrack = (e) => {
+            document.getElementById('remote-video').srcObject = e.streams[0];
+          };
+          pc.onicecandidate = (e) => {
+            if (e.candidate) ws.send(JSON.stringify({ type: 'ice-candidate', candidate: e.candidate }));
+          };
+          pc.addTransceiver('video', { direction: 'recvonly' });
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+          ws.send(JSON.stringify({ type: 'offer', sdp: offer.sdp }));
+          return;
+        }
+
+        if (msg.type === 'answer') {
+          await pc.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
+          resolve();
+          return;
+        }
+
+        if (msg.type === 'ice-candidate') {
+          await pc.addIceCandidate(msg.candidate);
+          return;
+        }
+
+        if (msg.type === 'capture-error') {
+          console.error('capture error:', msg.message);
+        }
+      });
+
+      ws.addEventListener('close', () => onDisconnect());
+      ws.addEventListener('error', reject);
+    });
+  }
+
+  function send(payload) {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  }
+
+  function onDisconnect() {
+    console.log('phone-remote: disconnected');
+  }
+
+  return { connect, send };
+})();
+
+async function startRemote(token) {
+  showRemoteScreen();
+  try {
+    await REMOTE.connect(token);
+    console.log('phone-remote: video connected');
+  } catch (err) {
+    console.error('phone-remote: connect failed', err);
+    localStorage.removeItem('phone-remote-token');
+    location.reload();
+  }
+}
+
 const existingToken = PAIRING.getStoredToken();
 if (existingToken) {
-  showRemoteScreen();
-  console.log('phone-remote: reusing stored token');
+  startRemote(existingToken);
 } else {
-  initPairingUi((token) => {
-    showRemoteScreen();
-    console.log('phone-remote: paired, token stored');
-  });
+  initPairingUi((token) => startRemote(token));
 }
+
