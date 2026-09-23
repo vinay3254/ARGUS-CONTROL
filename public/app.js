@@ -151,22 +151,38 @@ const REMOTE = (() => {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
   }
 
+  let reconnectCb = null;
+  function onReconnectNeeded(cb) { reconnectCb = cb; }
   function onDisconnect() {
     console.log('phone-remote: disconnected');
+    if (reconnectCb) reconnectCb();
   }
 
-  return { connect, send };
+  return { connect, send, onReconnectNeeded };
 })();
 
-async function startRemote(token) {
+const BACKOFF_STEPS_MS = [1000, 2000, 5000, 10000];
+
+async function startRemote(token, attempt = 0) {
   showRemoteScreen();
   try {
     await REMOTE.connect(token);
     console.log('phone-remote: video connected');
+    attempt = 0;
+    REMOTE.onReconnectNeeded(() => {
+      const delay = BACKOFF_STEPS_MS[Math.min(attempt, BACKOFF_STEPS_MS.length - 1)];
+      console.log(`phone-remote: reconnecting in ${delay}ms`);
+      setTimeout(() => startRemote(token, attempt + 1), delay);
+    });
   } catch (err) {
     console.error('phone-remote: connect failed', err);
-    localStorage.removeItem('phone-remote-token');
-    location.reload();
+    if (String(err.message).includes('auth-error')) {
+      localStorage.removeItem('phone-remote-token');
+      location.reload();
+      return;
+    }
+    const delay = BACKOFF_STEPS_MS[Math.min(attempt, BACKOFF_STEPS_MS.length - 1)];
+    setTimeout(() => startRemote(token, attempt + 1), delay);
   }
 }
 
