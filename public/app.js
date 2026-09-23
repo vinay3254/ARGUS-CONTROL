@@ -58,6 +58,15 @@ const PAIRING = (() => {
   return { getStoredToken, storeToken, submitCode, scanQrWithCamera, extractCodeFromUrl };
 })();
 
+function showBanner(text) {
+  const el = document.getElementById('banner');
+  el.textContent = text;
+  el.hidden = false;
+}
+function hideBanner() {
+  document.getElementById('banner').hidden = true;
+}
+
 function initPairingUi(onPaired) {
   const errorEl = document.getElementById('pairing-error');
   const showError = (msg) => { errorEl.textContent = msg; };
@@ -138,7 +147,14 @@ const REMOTE = (() => {
         }
 
         if (msg.type === 'capture-error') {
-          console.error('capture error:', msg.message);
+          showBanner(`Screen capture failed: ${msg.message}. Retrying...`);
+        }
+
+        if (msg.type === 'input-error') {
+          showBanner(msg.message.includes('ydotoold')
+            ? 'Input control unavailable: ydotoold is not running on the laptop.'
+            : `Input error: ${msg.message}`);
+          return;
         }
       });
 
@@ -168,6 +184,7 @@ async function startRemote(token, attempt = 0) {
   try {
     await REMOTE.connect(token);
     console.log('phone-remote: video connected');
+    hideBanner();
     attempt = 0;
     REMOTE.onReconnectNeeded(() => {
       const delay = BACKOFF_STEPS_MS[Math.min(attempt, BACKOFF_STEPS_MS.length - 1)];
