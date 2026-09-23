@@ -177,3 +177,48 @@ if (existingToken) {
   initPairingUi((token) => startRemote(token));
 }
 
+function initTouchInput() {
+  const video = document.getElementById('remote-video');
+  let touches = [];
+  let moved = false;
+  const TAP_MAX_MOVE = 10;
+
+  video.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    touches = Array.from(e.touches).map((t) => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
+    moved = false;
+  }, { passive: false });
+
+  video.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const current = Array.from(e.touches);
+    if (touches.length === 0 || current.length === 0) return;
+
+    if (touches.length === 1 && current.length === 1) {
+      const dx = current[0].clientX - touches[0].x;
+      const dy = current[0].clientY - touches[0].y;
+      if (Math.abs(dx) > TAP_MAX_MOVE || Math.abs(dy) > TAP_MAX_MOVE) moved = true;
+      REMOTE.send({ type: 'input', event: { type: 'move', dx: Math.round(dx), dy: Math.round(dy) } });
+      touches = [{ id: current[0].identifier, x: current[0].clientX, y: current[0].clientY }];
+    } else if (touches.length === 2 && current.length === 2) {
+      const dy = current[0].clientY - touches[0].y;
+      moved = true;
+      REMOTE.send({ type: 'input', event: { type: 'scroll', dx: 0, dy: Math.round(dy) } });
+      touches = current.map((t) => ({ id: t.identifier, x: t.clientX, y: t.clientY }));
+    }
+  }, { passive: false });
+
+  video.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    if (!moved) {
+      const button = touches.length === 2 ? 'right' : 'left';
+      REMOTE.send({ type: 'input', event: { type: 'click', button } });
+    }
+    touches = [];
+    moved = false;
+  }, { passive: false });
+}
+
+initTouchInput();
+
+
